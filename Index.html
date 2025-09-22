@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Uploader de Vídeos</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #eee;
+      text-align: center;
+      padding: 30px;
+    }
+    h1 { color: #4cafef; }
+    .container {
+      max-width: 700px;
+      margin: auto;
+      background: #1a1a1a;
+      padding: 20px;
+      border-radius: 15px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    }
+    .progress {
+      width: 100%;
+      margin: 15px auto;
+      height: 25px;
+      background: #333;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #4caf50, #00c6ff);
+      text-align: center;
+      color: white;
+      line-height: 25px;
+      transition: width 0.3s;
+    }
+    input, button {
+      padding: 10px;
+      margin: 10px;
+      border-radius: 8px;
+      border: none;
+      font-size: 14px;
+    }
+    input[type="file"], input[type="text"] {
+      width: 90%;
+      background: #222;
+      color: #eee;
+    }
+    button {
+      background: #4caf50;
+      color: white;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:hover { background: #43a047; }
+    a { color: #4cafef; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Lista de vídeos */
+    #search {
+      width: 90%;
+      padding: 10px;
+      background: #222;
+      color: #eee;
+      margin-top: 20px;
+      border-radius: 8px;
+      border: none;
+      font-size: 14px;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+      margin-top: 15px;
+      max-height: 250px;
+      overflow-y: auto;
+      background: #222;
+      border-radius: 10px;
+    }
+    li {
+      padding: 10px;
+      border-bottom: 1px solid #333;
+    }
+    li a {
+      color: #4cafef;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Uploader de Vídeos</h1>
+
+    <!-- Upload de Arquivo -->
+    <h3>Enviar arquivo do celular</h3>
+    <input type="file" id="fileInput"><br>
+    <button onclick="uploadFile()">Enviar Arquivo</button>
+    <div class="progress"><div id="fileBar" class="bar">0%</div></div>
+
+    <!-- Upload por URL -->
+    <h3>Enviar por link</h3>
+    <input type="text" id="urlInput" placeholder="Cole a URL do vídeo"><br>
+    <button onclick="uploadUrl()">Enviar por URL</button>
+    <div class="progress"><div id="urlBar" class="bar">0%</div></div>
+
+    <p id="status"></p>
+
+    <!-- Pesquisa e lista -->
+    <h3>Meus vídeos</h3>
+    <input type="text" id="search" placeholder="Pesquisar vídeo pelo nome..." onkeyup="filterVideos()">
+    <ul id="videoList"></ul>
+  </div>
+
+  <script>
+    let videos = []; // array para armazenar uploads
+
+    function addVideo(name, url) {
+      videos.push({ name, url });
+      renderList(videos);
+    }
+
+    function renderList(list) {
+      const ul = document.getElementById("videoList");
+      ul.innerHTML = "";
+      list.forEach(v => {
+        const li = document.createElement("li");
+        li.innerHTML = `🎬 <strong>${v.name}</strong><br><a href="${v.url}" target="_blank">${v.url}</a>`;
+        ul.appendChild(li);
+      });
+    }
+
+    function filterVideos() {
+      const term = document.getElementById("search").value.toLowerCase();
+      const filtered = videos.filter(v => v.name.toLowerCase().includes(term));
+      renderList(filtered);
+    }
+
+    // Upload de arquivo com barra de progresso
+    function uploadFile() {
+      const file = document.getElementById('fileInput').files[0];
+      if (!file) return alert("Selecione um arquivo!");
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload-file", true);
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const percent = (e.loaded / e.total) * 100;
+          document.getElementById('fileBar').style.width = percent + "%";
+          document.getElementById('fileBar').innerText = Math.floor(percent) + "%";
+        }
+      };
+
+      xhr.onload = () => {
+        try {
+          const res = JSON.parse(xhr.responseText);
+          if (res.success) {
+            document.getElementById('status').innerHTML =
+              `✅ Upload completo: <a href="${res.url}" target="_blank">Ver vídeo</a>`;
+            addVideo(file.name, res.url);
+          } else {
+            document.getElementById('status').innerText = "❌ Erro: " + res.error;
+          }
+        } catch {
+          document.getElementById('status').innerText = "❌ Erro inesperado no servidor.";
+        }
+      };
+
+      xhr.send(file);
+    }
+
+    // Upload por URL
+    async function uploadUrl() {
+      const url = document.getElementById('urlInput').value;
+      if (!url) return alert("Digite uma URL!");
+
+      document.getElementById('urlBar').style.width = "50%";
+      document.getElementById('urlBar').innerText = "Enviando...";
+
+      const res = await fetch("/api/upload-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('urlBar').style.width = "100%";
+        document.getElementById('urlBar').innerText = "100%";
+        document.getElementById('status').innerHTML =
+          `✅ Upload por URL completo: <a href="${data.url}" target="_blank">Ver vídeo</a>`;
+
+        // Nome genérico baseado no timestamp
+        const name = "video-" + Date.now() + ".mp4";
+        addVideo(name, data.url);
+      } else {
+        document.getElementById('status').innerText = "❌ Erro: " + data.error;
+      }
+    }
+  </script>
+</body>
+</html>
